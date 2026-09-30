@@ -2,6 +2,9 @@
 
 A Windows-first Spotify terminal controller built around local Windows media controls, with Spotify API features added only where needed.
 
+<img width="940" height="967" alt="image" src="https://github.com/user-attachments/assets/95ebd0fb-2aff-4146-9c59-43d02c8b0456" />
+
+
 ## Features
 
 - Current track, artist, album, album art, progress, play/pause, next, and previous
