@@ -1,75 +1,210 @@
-# spotcli-local v0.7
+# spotcli-local v0.11.0
 
-A Windows-first, local terminal Spotify controller with real terminal transparency, album-art rendering, Windows media controls, and Spotify catalog search without requiring you to create your own Spotify developer app.
+A Windows-first, local Spotify terminal controller with album art, transparent-terminal support, search/browse, queue controls, playlists, shuffle, local Spotify app volume, and persistent playlist caching.
 
-## What's new in v0.7
+## What's new in v0.11
 
-- **Reliable playback keys on Windows:** `k`, `n`, and `p` now emit the same Windows system media-key events as physical keyboard media buttons instead of relying on Spotify's GSMTC transport methods.
-- **Smooth song progress:** the UI interpolates the position locally between Windows timeline updates, so the progress bar/time moves smoothly instead of jumping every few seconds.
-- **Fixed Windows search path:** spotcli no longer calls `spotify_player search` through its CLI socket on Windows. That CLI path currently has a known Windows `os error 10054` bug. Instead, spotcli reuses spotify_player's cached Web API bearer token and talks to Spotify's search endpoint directly.
-- Search returns **tracks, albums, and playlists**.
-- The transparent Rich/ANSI renderer and album-art block renderer remain intact.
+### Installer now adds `spotcli` to PATH
+
+`install.ps1` now adds `%LOCALAPPDATA%\spotcli-local` to your **user PATH** automatically. After installing, open a new terminal and launch the app from anywhere with:
+
+```powershell
+spotcli
+```
+
+Verify the command with:
+
+```powershell
+where.exe spotcli
+```
+
+The expected result is `%LOCALAPPDATA%\spotcli-local\spotcli.cmd`. The installer is idempotent and will not add duplicate PATH entries.
+
+### Play an entire playlist
+
+Press `x` while a playlist is selected in search or **Your playlists** to start that playlist directly. You can also press `x` while browsing inside a playlist to start the current playlist context.
+
+### Deferred playback during API cooldowns
+
+Selecting a track no longer opens Spotify Desktop as a fallback when the Web API is rate-limited. If Spotify returns a `429`/`Retry-After`, spotcli remembers the requested track, waits for that cooldown in the background, and retries the play action once the timer expires. Selecting another track replaces the pending deferred play request.
+
+### More palettes
+
+The `c` key now cycles through: `classic`, `spotify`, `midnight`, `mono`, `purple`, `ocean`, `sunset`, `cyberpunk`, `rose`, `amber`, `forest`, and `ice`. Palette and transparency remain independent, so every palette can be used with either the transparent or solid theme.
+
+
+### Persistent playlist memory
+
+Playlist browsing is now cached to disk at:
+
+```text
+%APPDATA%\spotcli\cache.json
+```
+
+This cache contains only browse metadata such as playlist/track names and Spotify URIs. OAuth tokens are **not** copied into spotcli's cache.
+
+Once your playlists and their tracks have been loaded successfully, they remain available after closing spotcli, rebooting Windows, or hitting Spotify API rate limits later.
+
+- `l` opens your cached playlist list immediately when available.
+- Opening a previously cached playlist uses its saved track list without making another API request.
+- `r` force-refreshes the cache for the current playlist view.
+- In **Your playlists**, `r` refreshes the playlist list.
+- Inside a playlist or album, `r` refreshes that collection's saved tracks.
+- Cache survives spotcli upgrades because it lives under `%APPDATA%`, outside the installation directory.
+
+This deliberately makes browsing cache-first instead of expiring data automatically. You decide when Spotify gets another request.
+
+### Automatic authentication
+
+If spotcli starts and cannot find a cached `spotify_player` OAuth token, it now automatically runs:
+
+```powershell
+spotify_player authenticate
+```
+
+before entering the TUI. Complete the browser/login flow and spotcli continues automatically afterward.
+
+You can also trigger authentication manually without launching the player:
+
+```powershell
+spotcli --authenticate
+```
+
+If `spotify_player` is not installed or not in `PATH`, local Windows controls still work, but API-backed search/library features will show an authentication error.
+
+### Install once + Windows startup
+
+You no longer need to create a venv and run `pip install -e .` every time you launch the program.
+
+From the extracted release folder, run once:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\install.ps1
+```
+
+The installer creates a permanent environment under:
+
+```text
+%LOCALAPPDATA%\spotcli-local\.venv
+```
+
+and registers spotcli in your Windows Startup folder. After that, it starts automatically when you sign into Windows.
+
+The installer also adds the install directory to your user `PATH`, so after opening a new terminal you can simply run:
+
+```powershell
+spotcli
+```
+
+The manual launcher is:
+
+```text
+%LOCALAPPDATA%\spotcli-local\spotcli.cmd
+```
+
+To install without automatic startup:
+
+```powershell
+.\install.ps1 -NoStartup
+```
+
+You can also manage startup directly:
+
+```powershell
+spotcli --install-startup
+spotcli --remove-startup
+```
+
+When a future release is extracted, update the permanent install with:
+
+```powershell
+.\update.ps1
+```
+
+Your `%APPDATA%\spotcli` config and cache remain untouched.
 
 ## Requirements
 
 - Windows 10/11
 - Python 3.11+
 - Spotify Desktop
-- `spotify_player` only for its one-time OAuth authentication/cache used by search
+- `spotify_player` available for OAuth-backed Spotify Web API features
+- Spotify Premium may still be required for Web API playback-changing actions
 
-## Install
-
-```powershell
-py -m venv .venv
-.\.venv\Scripts\Activate.ps1
-py -m pip install -e .
-spotcli
-```
-
-For Spotify search, authenticate spotify_player once:
-
-```powershell
-spotify_player authenticate
-```
-
-After the browser authentication finishes, restart `spotcli`. spotcli reads the cached Web API token directly; it does **not** use spotify_player's Windows CLI socket for searches.
-
-## Controls
+## Default controls
 
 | Key | Action |
 | --- | --- |
-| `k` | Play / pause |
+| `k` | Play / pause via Windows media key |
 | `n` | Next track |
 | `p` | Previous track |
 | `/` | Search Spotify |
+| `↑` / `↓` | Move selection |
+| `Enter` | Play a track / open an album or playlist |
+| `a` | Add selected track to queue |
+| `x` | Play selected/current playlist |
+| `l` | View cached/user playlists |
+| `r` | Refresh the current playlist/collection cache |
+| `u` | View playback queue |
+| `s` | Toggle shuffle |
+| `[` / `]` | Change Spotify.exe Windows app volume |
+| `Esc` / `Backspace` | Go back |
 | `t` | Toggle transparent / solid theme |
 | `c` | Cycle palette |
 | `q` | Quit |
 
-While searching, `Enter` submits, `Backspace` edits, and `Esc` cancels.
+## API-minimizing behavior
 
-## Appearance
+These stay local and consume zero Spotify Web API requests:
 
-Theme and palette are independent. Themes are `transparent` and `solid`; palettes are `classic`, `spotify`, `midnight`, and `mono`.
+- now-playing metadata
+- album art
+- progress
+- play / pause
+- next / previous
+- Spotify.exe app volume
+- cached playlist browsing
+- cached playlist track browsing
 
-The transparent theme leaves terminal backgrounds untouched, so Windows Terminal's own acrylic/opacity/background image remains visible.
+Spotify's Web API is used only for things Windows cannot provide locally:
 
+- catalog search when a cached search is unavailable
+- first playlist/library fetch or an explicit `r` refresh
+- first collection fetch or an explicit `r` refresh
+- queue read/write
+- shuffle read/write
+- direct playback of a selected Spotify URI
 
-## v0.7 notes
+One playback-state request is still made at startup to initialize the shuffle indicator.
 
-- Progress rendering is now independent from Windows media polling, so a slow GSMTC call cannot freeze the UI.
-- The progress bar uses 1/8-cell Unicode fill levels, making it visibly advance roughly every half-second instead of one whole character every ~5 seconds.
-- Stale GSMTC timeline samples no longer drag the local progress clock backwards.
-- Search caches successful queries for 15 minutes and respects Spotify's `Retry-After` header.
-- If the shared spotify_player/ncspot API client is rate-limited, spotcli stops retrying and opens the query in Spotify Desktop as a temporary fallback.
+## Configurable keybinds
 
-The search 429 is upstream: spotify_player's default client ID is shared among many users, so its quota can be exhausted even when spotcli itself has only made one request. A dedicated Spotify client ID remains the stable route for fully in-terminal catalog search.
+`%APPDATA%\spotcli\config.toml`:
 
+```toml
+theme = "transparent"
+palette = "classic"
+volume_step = 5
 
-## v0.7 input and timeline fixes
+[keys]
+play_pause = "k"
+next = "n"
+previous = "p"
+search = "/"
+queue_selected = "a"
+play_playlist = "x"
+playlists = "l"
+refresh_cache = "r"
+queue_view = "u"
+shuffle = "s"
+volume_down = "["
+volume_up = "]"
+theme = "t"
+palette = "c"
+quit = "q"
+```
 
-- Fixed arrow keys and Windows Terminal mouse-wheel events accidentally triggering playback commands.
-- Restored the original whole-cell progress bar.
-- Fixed the elapsed-time clock by comparing the Windows playback-status enum directly, so the local clock can advance every second between Spotify timeline samples.
-- Search results are selectable: use **Up/Down** and press **Enter** to open the selected track, album, or playlist in Spotify Desktop.
-- Press **Esc** outside search-entry mode to clear the current result list.
+## Transparency
+
+Transparent theme leaves terminal background cells unset. Actual opacity/acrylic is controlled by Windows Terminal. Solid theme paints the application background itself.

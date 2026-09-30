@@ -138,6 +138,69 @@ class WindowsMediaSession:
     async def previous(self) -> bool:
         return self._send_media_key(self._VK_MEDIA_PREV_TRACK)
 
+    @staticmethod
+    def _spotify_audio_sessions():
+        """Return active Windows audio sessions owned by Spotify.exe.
+
+        This uses the local Windows Core Audio mixer through pycaw, so changing
+        Spotify's app volume costs zero Spotify Web API requests.
+        """
+        try:
+            from pycaw.pycaw import AudioUtilities
+        except Exception:
+            return []
+
+        matches = []
+        try:
+            for session in AudioUtilities.GetAllSessions():
+                process = getattr(session, "Process", None)
+                if process is None:
+                    continue
+                try:
+                    name = process.name().lower()
+                except Exception:
+                    continue
+                if name == "spotify.exe" or "spotify" in name:
+                    matches.append(session)
+        except Exception:
+            return []
+        return matches
+
+    def spotify_volume(self) -> int | None:
+        sessions = self._spotify_audio_sessions()
+        values: list[float] = []
+        for session in sessions:
+            volume = getattr(session, "SimpleAudioVolume", None)
+            if volume is None:
+                continue
+            try:
+                values.append(float(volume.GetMasterVolume()))
+            except Exception:
+                continue
+        if not values:
+            return None
+        # Spotify can own multiple processes/sessions. They normally share the
+        # same level; averaging avoids a stale duplicate dominating the display.
+        return max(0, min(100, round(sum(values) / len(values) * 100)))
+
+    def set_spotify_volume(self, percent: int) -> int | None:
+        sessions = self._spotify_audio_sessions()
+        if not sessions:
+            return None
+        percent = max(0, min(100, int(percent)))
+        level = percent / 100.0
+        changed = False
+        for session in sessions:
+            volume = getattr(session, "SimpleAudioVolume", None)
+            if volume is None:
+                continue
+            try:
+                volume.SetMasterVolume(level, None)
+                changed = True
+            except Exception:
+                continue
+        return percent if changed else None
+
 
 def _seconds(value: timedelta | object) -> float:
     if hasattr(value, "total_seconds"):

@@ -4,13 +4,14 @@ build-backend = "hatchling.build"
 
 [project]
 name = "spotcli-local"
-version = "0.7.0"
+version = "0.11.0"
 description = "A local-first Spotify-style terminal player for Windows"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
   "rich>=13.9.0",
   "Pillow>=10.0.0",
+  "pycaw>=20230407",
   "winrt-Windows.Foundation>=3.2.1",
   "winrt-Windows.Media.Control>=3.2.1",
   "winrt-Windows.Storage.Streams>=3.2.1",
