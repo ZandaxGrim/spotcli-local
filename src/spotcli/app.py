@@ -686,7 +686,7 @@ class SpotCLI:
         )
 
         state = Text(
-            state = "▶ playing" if self.info.playing else "|| paused"
+            "▶ playing" if self.info.playing else "|| paused",
             style=muted,
         )
 
