@@ -58,7 +58,8 @@ def load_config() -> SpotCLIConfig:
     raw_theme = str(data.get("theme", "transparent")).lower()
     raw_palette = str(data.get("palette", "")).lower()
 
-    # v0.2 stored transparent/midnight/spotify/mono in one theme value.
+    ##v0.2 stored transparent/midnight/spotify/mono in one theme value.
+
     if raw_theme == "transparent" and not raw_palette:
         theme, palette = "transparent", "classic"
     elif raw_theme in ("midnight", "spotify", "mono"):
@@ -101,6 +102,8 @@ def save_config(config: SpotCLIConfig) -> None:
 
 def _key_value(value: object, fallback: str) -> str:
     text = str(value or "").strip()
-    # Command bindings are intentionally one printable character. Navigation
-    # still uses Enter/Esc/Backspace/arrow keys and is not remapped here.
+
+    ##Command bindings are intentionally one printable character. Navigation
+    ##still uses Enter/Esc/Backspace/arrow keys and is not remapped here.
+
     return text[0].lower() if text and text[0].isprintable() else fallback

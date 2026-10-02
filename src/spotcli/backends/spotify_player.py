@@ -49,16 +49,14 @@ class SpotifyAPIError(RuntimeError):
 
 
 class SpotifyPlayerBackend:
-    """Spotify Web API helper using spotify_player's cached OAuth token.
 
-    The Windows spotify_player scripting socket has historically been flaky, so
-    spotcli reuses spotify_player's cached Web API token directly. This avoids
-    requiring spotcli to keep its own client secret or developer-dashboard app.
-
-    Search/browse calls work with the scopes spotify_player normally requests.
-    Playback-changing calls additionally require user-modify-playback-state and
-    Spotify Premium. Private playlist browsing requires playlist-read-private.
-    """
+    ##Spotify Web API helper using spotify_player's cached OAuth token.
+    ##The Windows spotify_player scripting socket has historically been flaky, so
+    ##spotcli reuses spotify_player's cached Web API token directly. This avoids
+    ##requiring spotcli to keep its own client secret or developer-dashboard app.
+    ##Search/browse calls work with the scopes spotify_player normally requests.
+    ##Playback-changing calls additionally require user-modify-playback-state and
+    ##Spotify Premium. Private playlist browsing requires playlist-read-private.
 
     API_ROOT = "https://api.spotify.com/v1"
 
@@ -70,8 +68,9 @@ class SpotifyPlayerBackend:
         self._quota_exceeded = False
         self._persistent_cache = self._load_persistent_cache()
 
-        # GET-heavy data is cached aggressively. spotcli is intentionally
-        # event-driven: no Web API request is made on a timer.
+        ##GET-heavy data is cached aggressively. spotcli is intentionally
+        ##event-driven: no Web API request is made on a timer.
+
         self.search_ttl = 3600.0
         self.playlists_ttl = 1800.0
         self.collection_ttl = 1800.0
@@ -98,7 +97,9 @@ class SpotifyPlayerBackend:
                 operation="search",
             )
         except SpotifyAPIError as exc:
-            # Keep v0.7's friendlier search-specific rate-limit behavior.
+
+            ##Keep v0.7's friendlier search-specific rate-limit behavior.
+
             message = str(exc)
             if "rate-limited" in message or "quota" in message:
                 retry_after = self._remaining_cooldown()
@@ -186,9 +187,11 @@ class SpotifyPlayerBackend:
         for index, raw in enumerate(raw_items):
             if not isinstance(raw, dict):
                 continue
-            # Album responses are track objects directly. Playlist responses in
-            # current Spotify APIs wrap the media item under `item`; older
-            # responses used `track`, so accept both.
+
+            ##Album responses are track objects directly. Playlist responses in
+            ##current Spotify APIs wrap the media item under `item`; older
+            ##responses used `track`, so accept both.
+
             track = raw
             if item.kind == "playlist":
                 track = raw.get("item") or raw.get("track") or {}
@@ -258,8 +261,10 @@ class SpotifyPlayerBackend:
 
         if item.context_uri and item.kind == "track":
             body: dict[str, Any] = {"context_uri": item.context_uri}
-            # URI offsets are more stable than numeric offsets when a playlist
-            # contains unavailable/local entries.
+
+            ##URI offsets are more stable than numeric offsets when a playlist
+            ##contains unavailable/local entries.
+
             body["offset"] = {"uri": item.uri}
         else:
             body = {"uris": [item.uri]}
@@ -572,12 +577,16 @@ class SpotifyPlayerBackend:
         raise SpotifyAPIError(f"Spotify API cooldown active for about {remaining}s{suffix}")
 
     def cooldown_seconds(self) -> int | None:
-        """Return remaining API cooldown seconds, if a 429 cooldown is active."""
+
+        ##Return remaining API cooldown seconds, if a 429 cooldown is active.
+
         return self._remaining_cooldown()
 
     async def wait_for_cooldown(self) -> None:
-        """Sleep until the current Spotify API Retry-After window has elapsed."""
-        # Import locally so the synchronous backend remains cheap for normal calls.
+
+        ##Sleep until the current Spotify API Retry-After window has elapsed.
+        ##Import locally so the synchronous backend remains cheap for normal calls.
+
         import asyncio
         while True:
             remaining = self._remaining_cooldown()

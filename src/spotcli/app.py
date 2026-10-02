@@ -86,7 +86,6 @@ class SpotCLI:
         self.running = True
         self.shuffle_state: bool | None = None
         self.volume_percent: int | None = None
-        self.device_name = ""
         self.supports_volume = True
 
         self._progress_anchor_position = 0.0
@@ -126,11 +125,11 @@ class SpotCLI:
 
         try:
             with Live(
-                self.render(),
-                console=self.console,
-                screen=True,
-                auto_refresh=False,
-                transient=False,
+                    self.render(),
+                    console=self.console,
+                    screen=True,
+                    auto_refresh=False,
+                    transient=False,
             ) as live:
                 while self.running:
                     await self._read_keys()
@@ -157,25 +156,48 @@ class SpotCLI:
                     pass
 
     async def _poll_media(self) -> None:
+        ##Keep this local whenever possible. GSMTC can give us track/art/progress
+        ##without burning Spotify API calls every few seconds like an idiot.
         while self.running:
             await self.refresh_now_playing()
             await asyncio.sleep(0.75)
 
     async def _refresh_shuffle_state(self, startup: bool = False) -> None:
-        """Fetch shuffle state with a single Spotify playback-state request.
+        ##Grab shuffle once at startup then keep it local after that.
+        ##If Spotify decides to be useless or rate limits us, just chill and retry
+        ##instead of leaving shuffle stuck as `?` forever.
 
-        v0.9.1 performs this once at startup, then keeps the value locally until
-        the user changes shuffle. No background Spotify API polling is used.
-        """
-        try:
-            state: PlaybackState = await asyncio.to_thread(self.spotify.get_playback_state)
-            self.shuffle_state = state.shuffle
-            self.device_name = state.device_name
-        except SpotifyAPIError as exc:
-            # Keep startup non-intrusive: surface the failure, but leave the
-            # local player fully usable and the indicator as `?`.
-            prefix = "startup shuffle check: " if startup else ""
-            self.status_message = prefix + str(exc)
+        retry_count = 0
+
+        while self.running:
+            try:
+                state: PlaybackState = await asyncio.to_thread(
+                    self.spotify.get_playback_state
+                )
+                self.shuffle_state = state.shuffle
+
+                ##If startup had to retry a few times, clear the old API whining
+                ##once shuffle finally works so the UI doesn't look broken for no reason.
+                if startup and self.status_message.startswith("startup shuffle check:"):
+                    self.status_message = ""
+
+                return
+
+            except SpotifyAPIError as exc:
+                if not startup:
+                    self.status_message = str(exc)
+                    return
+
+                retry_count += 1
+                cooldown = self.spotify.cooldown_seconds()
+
+                ##Startup shuffle is useful but it doesn't need to shit all over
+                ##the player UI when Spotify rate limits us. wait quietly and retry
+                ##until we finally get a real on/off back.
+                retry_in = cooldown if cooldown is not None else min(30, 5 * retry_count)
+                retry_in = max(1, retry_in)
+
+                await asyncio.sleep(retry_in)
 
     async def refresh_now_playing(self) -> None:
         try:
@@ -640,11 +662,33 @@ class SpotCLI:
 
         title = Text(self.info.title or "Nothing playing", style=Style(color=palette.fg, bold=True))
         artist = Text(self.info.artist or "", style=muted)
-        album = Text(self.info.album or "", style=muted)
-        progress = Text(progress_line(self._display_position(), self.info.duration_seconds, progress_width), style=palette.fg)
-        state = "▶ playing" if self.info.playing else "⏸ paused"
-        source_text = f"{state}  •  {self.info.source or 'no active media session'}"
-        source = Text(source_text, style=muted)
+
+        ##Don't print the same shit twice. Self-titled albums make this look dumb,
+        ##so if album == artist (or somehow title) just skip the extra line.
+        album_name = (self.info.album or "").strip()
+        album_compare = album_name.casefold()
+        artist_compare = (self.info.artist or "").strip().casefold()
+        title_compare = (self.info.title or "").strip().casefold()
+        show_album = (
+                width >= 72
+                and bool(album_name)
+                and album_compare not in {artist_compare, title_compare}
+        )
+        album = Text(album_name, style=muted)
+
+        progress = Text(
+            progress_line(
+                self._display_position(),
+                self.info.duration_seconds,
+                progress_width,
+            ),
+            style=palette.fg,
+        )
+
+        state = Text(
+            "▶ playing" if self.info.playing else "⏸ paused",
+            style=muted,
+        )
 
         controls = Text(style=muted)
         shuffle = "?" if self.shuffle_state is None else ("on" if self.shuffle_state else "off")
@@ -652,15 +696,13 @@ class SpotCLI:
         controls.append(f"shuffle: {shuffle}")
         controls.append("  •  ")
         controls.append(f"volume: {volume}")
-        if self.device_name and width >= 96:
-            controls.append(f"  •  {self.device_name}")
 
         meta_rows: list[RenderableType] = [title, artist]
-        if width >= 72:
+
+        if show_album:
             meta_rows.append(album)
-        meta_rows.extend([progress, controls])
-        if width >= 88:
-            meta_rows.append(source)
+
+        meta_rows.extend([progress, controls, state])
         if self.status_message:
             meta_rows.append(Text(self.status_message, style=Style(color=palette.accent)))
         meta = Group(*meta_rows)

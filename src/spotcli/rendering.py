@@ -9,13 +9,13 @@ from rich.text import Text
 
 
 def render_album_art(data: bytes | None, width: int = 28, rows: int = 10) -> Text:
-    """Render album art with true-color Unicode half blocks.
 
-    Each terminal cell carries two independently colored vertical pixels.  The
-    renderer keeps considerably more cells than v0.2/v0.3 and applies a very
-    light post-resize sharpness pass, which makes small cover text/edges less
-    muddy without inventing image detail.
-    """
+    ##Render album art with true-color Unicode half blocks.
+    ##Each terminal cell carries two independently colored vertical pixels.  The
+    ##renderer keeps considerably more cells than v0.2/v0.3 and applies a very
+    ##light post-resize sharpness pass, which makes small cover text/edges less
+    ##muddy without inventing image detail.
+
     width = max(4, int(width))
     rows = max(2, int(rows))
     if not data:
@@ -67,7 +67,9 @@ def _placeholder(width: int, rows: int) -> Text:
 
 
 def progress_line(position_seconds: float, duration_seconds: float, width: int = 34) -> str:
-    """Render the original whole-cell progress bar used before v0.6."""
+
+    ##Render the original whole-cell progress bar used before v0.6.
+
     width = max(4, int(width))
     if duration_seconds <= 0:
         ratio = 0.0
