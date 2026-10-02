@@ -113,11 +113,12 @@ class SpotCLI:
         await self.media.start()
         await self.refresh_now_playing()
         self._media_poll_task = asyncio.create_task(self._poll_media(), name="spotcli-media-poll")
-        # One intentional Web API read is made at startup so the shuffle
-        # indicator reflects Spotify immediately. It runs in the background so
-        # a slow/rate-limited API never delays the local player UI.
+        ##Do one shuffle task at startup and let it handle its own retries.
+        ##No extra probe here, because that just burns another API request and
+        ##makes Spotify's 429 cooldown bullshit even easier to hit.
         self._startup_api_task = asyncio.create_task(
-            self._refresh_shuffle_state(startup=True), name="spotcli-startup-shuffle"
+            self._refresh_shuffle_state(startup=True),
+            name="spotcli-startup-shuffle",
         )
         # Volume is still read from the local Windows app mixer and costs no
         # Spotify API quota.
@@ -125,11 +126,11 @@ class SpotCLI:
 
         try:
             with Live(
-                    self.render(),
-                    console=self.console,
-                    screen=True,
-                    auto_refresh=False,
-                    transient=False,
+                self.render(),
+                console=self.console,
+                screen=True,
+                auto_refresh=False,
+                transient=False,
             ) as live:
                 while self.running:
                     await self._read_keys()
@@ -163,9 +164,9 @@ class SpotCLI:
             await asyncio.sleep(0.75)
 
     async def _refresh_shuffle_state(self, startup: bool = False) -> None:
-        ##Grab shuffle once at startup then keep it local after that.
-        ##If Spotify decides to be useless or rate limits us, just chill and retry
-        ##instead of leaving shuffle stuck as `?` forever.
+        ##Grab shuffle once at startup and keep trying until Spotify actually
+        ##gives us a real on/off back. Respect 429 cooldowns instead of hammering
+        ##the endpoint over and over like a dumbass.
 
         retry_count = 0
 
@@ -174,30 +175,33 @@ class SpotCLI:
                 state: PlaybackState = await asyncio.to_thread(
                     self.spotify.get_playback_state
                 )
-                self.shuffle_state = state.shuffle
 
-                ##If startup had to retry a few times, clear the old API whining
-                ##once shuffle finally works so the UI doesn't look broken for no reason.
-                if startup and self.status_message.startswith("startup shuffle check:"):
-                    self.status_message = ""
+                if state.shuffle is not None:
+                    self.shuffle_state = state.shuffle
+                    return
 
-                return
+                if not startup:
+                    return
+
+                retry_count += 1
+                await asyncio.sleep(min(30, 5 * retry_count))
 
             except SpotifyAPIError as exc:
                 if not startup:
                     self.status_message = str(exc)
                     return
 
-                retry_count += 1
                 cooldown = self.spotify.cooldown_seconds()
 
-                ##Startup shuffle is useful but it doesn't need to shit all over
-                ##the player UI when Spotify rate limits us. wait quietly and retry
-                ##until we finally get a real on/off back.
-                retry_in = cooldown if cooldown is not None else min(30, 5 * retry_count)
-                retry_in = max(1, retry_in)
+                ##If Spotify told us exactly how long to wait, actually wait it out
+                ##before touching /me/player again.
+                if cooldown is not None:
+                    await self.spotify.wait_for_cooldown()
+                    await asyncio.sleep(0.5)
+                    continue
 
-                await asyncio.sleep(retry_in)
+                retry_count += 1
+                await asyncio.sleep(min(30, 5 * retry_count))
 
     async def refresh_now_playing(self) -> None:
         try:
@@ -670,9 +674,9 @@ class SpotCLI:
         artist_compare = (self.info.artist or "").strip().casefold()
         title_compare = (self.info.title or "").strip().casefold()
         show_album = (
-                width >= 72
-                and bool(album_name)
-                and album_compare not in {artist_compare, title_compare}
+            width >= 72
+            and bool(album_name)
+            and album_compare not in {artist_compare, title_compare}
         )
         album = Text(album_name, style=muted)
 
