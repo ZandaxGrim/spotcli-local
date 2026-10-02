@@ -16,39 +16,48 @@ if (-not (Test-Path $Python)) {
 }
 
 & $Python -m pip install --upgrade pip
-& $Python -m pip install --upgrade $PSScriptRoot
+& $Python -m pip install --upgrade --force-reinstall $PSScriptRoot
 
 @"
 @echo off
 "$Python" -m spotcli.app %*
 "@ | Set-Content -Encoding ASCII $Launcher
 
-# Add the stable launcher directory to the current user's PATH so `spotcli`
-# works from new PowerShell/cmd windows without activating the venv.
+##Put our launcher FIRST in PATH.
+##If an old pip install left a spotcli.exe somewhere else, we don't want Windows
+##randomly grabbing that stale copy instead of the install we literally just made.
 $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
 $PathParts = @()
+
 if ($UserPath) {
-    $PathParts = $UserPath -split ';' | Where-Object { $_ -and $_.Trim() }
+    $PathParts = $UserPath -split ';' |
+        Where-Object { $_ -and $_.Trim() -and $_.TrimEnd('\') -ne $InstallRoot.TrimEnd('\') }
 }
-if ($PathParts -notcontains $InstallRoot) {
-    $NewUserPath = (($PathParts + $InstallRoot) -join ';')
-    [Environment]::SetEnvironmentVariable("Path", $NewUserPath, "User")
-    Write-Host "Added $InstallRoot to your user PATH."
-} else {
-    Write-Host "spotcli install directory is already on your user PATH."
-}
-if (($env:Path -split ';') -notcontains $InstallRoot) {
-    $env:Path = "$env:Path;$InstallRoot"
-}
+
+$NewUserPath = (($InstallRoot) + $PathParts) -join ';'
+[Environment]::SetEnvironmentVariable("Path", $NewUserPath, "User")
+
+##Do the same for this PowerShell window so `spotcli` works immediately.
+$CurrentParts = $env:Path -split ';' |
+    Where-Object { $_ -and $_.Trim() -and $_.TrimEnd('\') -ne $InstallRoot.TrimEnd('\') }
+$env:Path = (($InstallRoot) + $CurrentParts) -join ';'
 
 if (-not $NoStartup) {
     & $Python -m spotcli.app --install-startup
 }
 
 Write-Host ""
-Write-Host "Installed. You do not need to rebuild or reinstall on each launch."
-Write-Host "Manual launcher: $Launcher"
-Write-Host "Terminal command: spotcli (open a new terminal if this one does not see the PATH update)"
+Write-Host "Installed."
+Write-Host "Launcher:         $Launcher"
+Write-Host "Terminal command: spotcli"
 Write-Host "Config/cache:     $env:APPDATA\spotcli"
 Write-Host ""
-Write-Host "To update later, extract a newer spotcli release and run .\update.ps1"
+
+$Resolved = Get-Command spotcli -ErrorAction SilentlyContinue
+if ($Resolved) {
+    Write-Host "spotcli resolves to: $($Resolved.Source)"
+}
+
+if ($Resolved -and $Resolved.Source -ne $Launcher) {
+    Write-Warning "This shell still resolves another spotcli first. Open a new terminal and run: Get-Command spotcli"
+}
